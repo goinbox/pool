@@ -33,40 +33,40 @@ type Pool struct {
 }
 
 func NewPool(config *Config) *Pool {
-	this := &Pool{
+	p := &Pool{
 		config: config,
 
 		conns: make(chan *poolItem, config.Size),
 	}
 
 	if config.KeepAliveInterval > 0 && config.KeepAliveFunc != nil {
-		go this.keepAliveRoutine()
+		go p.keepAliveRoutine()
 	}
 
-	return this
+	return p
 }
 
-func (this *Pool) Get() (IConn, error) {
-	pi := this.get()
+func (p *Pool) Get() (IConn, error) {
+	pi := p.get()
 	if pi != nil {
-		if time.Now().Sub(pi.accessTime) < this.config.MaxIdleTime {
+		if time.Now().Sub(pi.accessTime) < p.config.MaxIdleTime {
 			return pi.conn, nil
 		}
 
 		pi.conn.Free()
 	}
 
-	return this.config.NewConnFunc()
+	return p.config.NewConnFunc()
 }
 
-func (this *Pool) Put(conn IConn) error {
+func (p *Pool) Put(conn IConn) error {
 	pi := &poolItem{
 		conn: conn,
 
 		accessTime: time.Now(),
 	}
 
-	notFull := this.put(pi)
+	notFull := p.put(pi)
 	if notFull {
 		return nil
 	}
@@ -76,9 +76,9 @@ func (this *Pool) Put(conn IConn) error {
 	return ErrPoolIsFull
 }
 
-func (this *Pool) get() *poolItem {
+func (p *Pool) get() *poolItem {
 	select {
-	case pi := <-this.conns:
+	case pi := <-p.conns:
 		return pi
 	default:
 	}
@@ -86,9 +86,9 @@ func (this *Pool) get() *poolItem {
 	return nil
 }
 
-func (this *Pool) put(pi *poolItem) bool {
+func (p *Pool) put(pi *poolItem) bool {
 	select {
-	case this.conns <- pi:
+	case p.conns <- pi:
 		return true
 	default:
 	}
@@ -96,30 +96,30 @@ func (this *Pool) put(pi *poolItem) bool {
 	return false
 }
 
-func (this *Pool) keepAliveRoutine() {
-	ticker := time.NewTicker(this.config.KeepAliveInterval)
+func (p *Pool) keepAliveRoutine() {
+	ticker := time.NewTicker(p.config.KeepAliveInterval)
 
 	for {
 		select {
 		case <-ticker.C:
-			this.keepAlive()
+			p.keepAlive()
 		}
 	}
 }
 
-func (this *Pool) keepAlive() {
-	maxIdleNum := len(this.conns)
+func (p *Pool) keepAlive() {
+	maxIdleNum := len(p.conns)
 
 	for i := 0; i < maxIdleNum; i++ {
-		pi := this.get()
+		pi := p.get()
 		if pi == nil {
 			return
 		}
 
-		if time.Now().Sub(pi.accessTime) < this.config.MaxIdleTime {
-			err := this.config.KeepAliveFunc(pi.conn)
+		if time.Now().Sub(pi.accessTime) < p.config.MaxIdleTime {
+			err := p.config.KeepAliveFunc(pi.conn)
 			if err == nil {
-				if this.put(pi) {
+				if p.put(pi) {
 					continue
 				}
 			}
